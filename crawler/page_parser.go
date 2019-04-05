@@ -26,7 +26,7 @@ func (crawler *Crawler) parseLinkingPages(nodeList *goquery.Selection, req *Requ
 		if !URLFilter(fullURL, PageURL, crawler.MainSite) {
 			return
 		}
-		localLink, err := crawler.TransToLocalLink(fullURL, PageURL)
+		localLink, err := TransToLocalLink(crawler.MainSite, fullURL, PageURL)
 		if err != nil {
 			return
 		}
@@ -67,7 +67,7 @@ func (crawler *Crawler) parseLinkingAssets(nodeList *goquery.Selection, req *Req
 		if !URLFilter(fullURL, AssetURL, crawler.MainSite) {
 			return
 		}
-		localLink, err := crawler.TransToLocalLink(fullURL, AssetURL)
+		localLink, err := TransToLocalLink(crawler.MainSite, fullURL, AssetURL)
 		if err != nil {
 			return
 		}
@@ -103,7 +103,7 @@ func (crawler *Crawler) parseCSSFile(content []byte, req *RequestTask) (newConte
 			if !URLFilter(fullURL, AssetURL, crawler.MainSite) {
 				return
 			}
-			localLink, err := crawler.TransToLocalLink(fullURL, AssetURL)
+			localLink, err := TransToLocalLink(crawler.MainSite, fullURL, AssetURL)
 			if err != nil {
 				continue
 			}

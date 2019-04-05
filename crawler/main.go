@@ -125,7 +125,7 @@ func (crawler *Crawler) GetHTMLPage(num int) {
 			logger.Errorf("编码失败: %s", err.Error())
 			continue
 		}
-		fileDir, fileName, err := crawler.TransToLocalPath(req.URL, PageURL)
+		fileDir, fileName, err := TransToLocalPath(crawler.MainSite, req.URL, PageURL)
 		if err != nil {
 			continue
 		}
@@ -160,7 +160,7 @@ func (crawler *Crawler) GetStaticAsset(num int) {
 				continue
 			}
 		}
-		fileDir, fileName, err := crawler.TransToLocalPath(req.URL, AssetURL)
+		fileDir, fileName, err := TransToLocalPath(crawler.MainSite, req.URL, AssetURL)
 		if err != nil {
 			continue
 		}

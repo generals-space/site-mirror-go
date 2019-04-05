@@ -8,7 +8,7 @@ import (
 
 // TransToLocalLink ...
 // @return: localLink 本地链接, 用于写入本地html文档中的link/script/img/a等标签的链接属性, 格式为以斜线/起始的根路径.
-func (crawler *Crawler) TransToLocalLink(fullURL string, urlType int) (localLink string, err error) {
+func TransToLocalLink(mainSite string, fullURL string, urlType int) (localLink string, err error) {
 	// 对于域名为host的url, 资源存放目录为output根目录, 而不是域名文件夹. 默认不设置主host
 	urlObj, err := url.Parse(fullURL)
 	if err != nil {
@@ -20,15 +20,15 @@ func (crawler *Crawler) TransToLocalLink(fullURL string, urlType int) (localLink
 
 	localLink = originPath
 	if urlType == PageURL {
-		localLink = crawler.transToLocalLinkForPage(urlObj)
+		localLink = transToLocalLinkForPage(urlObj)
 	} else {
-		localLink = crawler.transToLocalLinkForAsset(urlObj)
+		localLink = transToLocalLinkForAsset(urlObj)
 	}
 
 	// 如果该url就是当前站点域名下的，那么无需新建域名目录存放.
 	// 如果是其他站点的(需要事先开启允许下载其他站点静态文件的配置),
 	// 则要将资源存放在以站点域名为名的目录下, 路径中仍然需要保留域名部分.
-	if originHost != crawler.MainSite {
+	if originHost != mainSite {
 		host := originHost
 		// 有时originHost中可能包含端口, 冒号需要转义.
 		host = strings.Replace(host, ":", SpecialCharsMap[":"], -1)
@@ -45,7 +45,7 @@ func (crawler *Crawler) TransToLocalLink(fullURL string, urlType int) (localLink
 	return
 }
 
-func (crawler *Crawler) transToLocalLinkForPage(urlObj *url.URL) (localLink string) {
+func transToLocalLinkForPage(urlObj *url.URL) (localLink string) {
 	originPath := urlObj.Path
 	originQuery := urlObj.RawQuery
 
@@ -79,7 +79,7 @@ func (crawler *Crawler) transToLocalLinkForPage(urlObj *url.URL) (localLink stri
 	return
 }
 
-func (crawler *Crawler) transToLocalLinkForAsset(urlObj *url.URL) (localLink string) {
+func transToLocalLinkForAsset(urlObj *url.URL) (localLink string) {
 	originPath := urlObj.Path
 	originQuery := urlObj.RawQuery
 
@@ -109,8 +109,8 @@ func (crawler *Crawler) transToLocalLinkForAsset(urlObj *url.URL) (localLink str
 
 // TransToLocalPath ...
 // @return: 返回本地路径与文件名称, 用于写入本地文件
-func (crawler *Crawler) TransToLocalPath(fullURL string, urlType int) (fileDir string, fileName string, err error) {
-	localLink, err := crawler.TransToLocalLink(fullURL, urlType)
+func TransToLocalPath(mainSite string, fullURL string, urlType int) (fileDir string, fileName string, err error) {
+	localLink, err := TransToLocalLink(mainSite, fullURL, urlType)
 
 	// 如果是站外资源, local_link可能为/www.xxx.com/static/x.jpg,
 	// 但我们需要的存储目录是相对路径, 所以需要事先将链接起始的斜线/移除, 作为相对路径.
