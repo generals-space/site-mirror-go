@@ -42,7 +42,7 @@ func NewCrawler(config *Config) (crawler *Crawler, err error) {
 	return
 }
 
-// Start 启动n个协程
+// Start 启动n个工作协程
 func (crawler *Crawler) Start() {
 	req := &RequestTask{
 		URL:         crawler.Config.StartPage,
@@ -77,38 +77,53 @@ func (crawler *Crawler) GetHTMLPage(num int) {
 	for req := range crawler.PageQueue {
 		logger.Infof("取得页面任务: %+v", req)
 		if 0 < crawler.Config.MaxDepth && crawler.Config.MaxDepth < req.Depth {
-			logger.Infof("当前页面已达到最大深度, 不再抓取新页面: url: %s, refer: %s, depth: %d", req.URL, req.Refer, req.Depth)
+			logger.Infof("当前页面已达到最大深度, 不再抓取: req: %+v", req)
+			continue
 		}
-		resp, err := getURL(req.URL, req.Refer)
+		if req.FailedTimes > crawler.Config.MaxRetryTimes {
+			logger.Infof("当前页面失败次数过多, 不再尝试: req: %+v", req)
+			continue
+		}
+
+		resp, err := getURL(req.URL, req.Refer, crawler.Config.UserAgent)
 		if err != nil {
-			logger.Errorf("请求页面失败: url: %s, refer: %s, error: %s, 重新入队列", req.URL, req.Refer, err.Error())
+			logger.Errorf("请求页面失败, 重新入队列: req: %+v, error: %s", req, err.Error())
+			req.FailedTimes++
+			crawler.EnqueuePage(req)
+			continue
+		} else if resp.StatusCode == 404 {
+			// 抓取失败一般是5xx或403, 405等, 出现404基本上就没有重试的意义了, 可以直接放弃
 			continue
 		}
 		defer resp.Body.Close()
+		// 编码处理
 		bodyContent, err := ioutil.ReadAll(resp.Body)
 		charsetName, err := getPageCharset(bodyContent)
 		if err != nil {
-			logger.Errorf("获取页面编码失败: url: %s, refer: %s, error: %s, 重新入队列", req.URL, req.Refer, err.Error())
+			logger.Errorf("获取页面编码失败: req: %+v, error: %s", req, err.Error())
+			continue
 		}
-		logger.Debugf("页面编码: %s, url: %s, refer: %s", charsetName, req.URL, req.Refer)
-		// 解析页面
-		charset, exist := CharsetMap[strings.ToLower(charsetName)]
+		charsetName = strings.ToLower(charsetName)
+		logger.Debugf("当前页面编码: %s, req: %+v", charsetName, req)
+		charset, exist := CharsetMap[charsetName]
 		if !exist {
-			logger.Debugf("未找到匹配的编码: %s, url: %s, refer: %s", charsetName, req.URL, req.Refer)
+			logger.Debugf("未找到匹配的编码: req: %+v, error: %s", req, err.Error())
+			continue
 		}
 		utf8Coutent, err := DecodeToUTF8(bodyContent, charset)
 		if err != nil {
-			logger.Errorf("页面解码失败: %s", err.Error())
+			logger.Errorf("页面解码失败: req: %+v, error: %s", req, err.Error())
+			continue
 		}
 		utf8Reader := bytes.NewReader(utf8Coutent)
 		htmlDom, err := goquery.NewDocumentFromReader(utf8Reader)
 		if err != nil {
-			logger.Errorf("生成dom树失败: %s", err.Error())
+			logger.Errorf("生成dom树失败: req: %+v, error: %s", req, err.Error())
 			continue
 		}
 
 		if 0 < crawler.Config.MaxDepth && crawler.Config.MaxDepth < req.Depth+1 {
-			logger.Infof("当前页面已达到最大深度, 不再抓取新页面: url: %s, refer: %s, depth: %d", req.URL, req.Refer, req.Depth)
+			logger.Infof("当前页面已达到最大深度, 不再解析新页面: %+v", req)
 		} else {
 			crawler.ParseLinkingPages(htmlDom, req)
 		}
@@ -116,22 +131,23 @@ func (crawler *Crawler) GetHTMLPage(num int) {
 
 		htmlString, err := htmlDom.Html()
 		if err != nil {
-			logger.Errorf("生成dom树失败: %s", err.Error())
+			logger.Errorf("获取页面Html()值失败: req: %+v, error: %s", req, err.Error())
 			continue
 		}
 		htmlString = ReplaceHTMLCharacterEntities(htmlString, charset)
 		fileContent, err := EncodeFromUTF8([]byte(htmlString), charset)
 		if err != nil {
-			logger.Errorf("编码失败: %s", err.Error())
+			logger.Errorf("页面编码失败: req: %+v, error: %s", req, err.Error())
 			continue
 		}
 		fileDir, fileName, err := TransToLocalPath(crawler.MainSite, req.URL, PageURL)
 		if err != nil {
+			logger.Errorf("转换为本地链接失败: req: %+v, error: %s", req, err.Error())
 			continue
 		}
 		err = WriteToLocalFile(crawler.Config.SitePath, fileDir, fileName, fileContent)
 		if err != nil {
-			logger.Errorf("写入文件失败: %s", err.Error())
+			logger.Errorf("写入文件失败: req: %+v, error: %s", req, err.Error())
 			continue
 		}
 	}
@@ -141,12 +157,19 @@ func (crawler *Crawler) GetHTMLPage(num int) {
 func (crawler *Crawler) GetStaticAsset(num int) {
 	for req := range crawler.AssetQueue {
 		logger.Infof("取得静态文件任务: %+v", req)
-		if 0 < crawler.Config.MaxDepth && crawler.Config.MaxDepth < req.Depth {
-			logger.Infof("当前页面已达到最大深度, 不再抓取新页面: url: %s, refer: %s, depth: %d", req.URL, req.Refer, req.Depth)
+		if req.FailedTimes > crawler.Config.MaxRetryTimes {
+			logger.Infof("当前页面失败次数过多, 不再尝试: req: %+v", req)
+			continue
 		}
-		resp, err := getURL(req.URL, req.Refer)
+
+		resp, err := getURL(req.URL, req.Refer, crawler.Config.UserAgent)
 		if err != nil {
-			logger.Errorf("请求页面失败: url: %s, refer: %s, error: %s, 重新入队列", req.URL, req.Refer, err.Error())
+			logger.Errorf("请求静态资源失败, 重新入队列: req: %+v, error: %s", req, err.Error())
+			req.FailedTimes++
+			crawler.EnqueueAsset(req)
+			continue
+		} else if resp.StatusCode == 404 {
+			// 抓取失败一般是5xx或403, 405等, 出现404基本上就没有重试的意义了, 可以直接放弃
 			continue
 		}
 		defer resp.Body.Close()
@@ -156,18 +179,20 @@ func (crawler *Crawler) GetStaticAsset(num int) {
 		if exist && field[0] == "text/css" {
 			bodyContent, err = crawler.parseCSSFile(bodyContent, req)
 			if err != nil {
-				logger.Errorf("解析css文件失败: %s", err.Error())
+				logger.Errorf("解析css文件失败: req: %+v, error: %s", req, err.Error())
 				continue
 			}
 		}
 		fileDir, fileName, err := TransToLocalPath(crawler.MainSite, req.URL, AssetURL)
 		if err != nil {
+			logger.Errorf("转换为本地链接失败: req: %+v, error: %s", req, err.Error())
 			continue
 		}
+
 		fileContent := bodyContent
 		err = WriteToLocalFile(crawler.Config.SitePath, fileDir, fileName, fileContent)
 		if err != nil {
-			logger.Errorf("写入文件失败: %s", err.Error())
+			logger.Errorf("写入文件失败: req: %+v, error: %s", req, err.Error())
 			continue
 		}
 	}

@@ -31,8 +31,14 @@ type Config struct {
 
 	SiteDBPath string
 	SitePath   string
-	StartPage  string
-	MaxDepth   int
+
+	StartPage string
+	UserAgent string
+	// 爬取页面的深度, 从1开始计, 爬到第N层为止.
+	// 1表示只抓取单页, 0表示无限制
+	MaxDepth int
+	// 请求出错最大重试次数(超时也算出错)
+	MaxRetryTimes int
 
 	PageWorkerCount  int
 	AssetWorkerCount int
@@ -43,10 +49,10 @@ type Config struct {
 	NoFonts  string
 }
 
-func getURL(url, refer string) (resp *http.Response, err error) {
+func getURL(url, refer, ua string) (resp *http.Response, err error) {
 	client := &http.Client{}
 	req, err := http.NewRequest("GET", url, nil)
-	req.Header.Set("User-Agent", "")
+	req.Header.Set("User-Agent", ua)
 	req.Header.Set("Referer", refer)
 
 	resp, err = client.Do(req)
