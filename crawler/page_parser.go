@@ -87,8 +87,6 @@ func (crawler *Crawler) parseLinkingAssets(nodeList *goquery.Selection, req *Req
 // parseCSSFile 解析css文件中的链接, 获取资源并修改其引用路径.
 // css中可能包含url属性,或者是background-image属性的引用路径,
 // 格式可能为url('./bg.jpg'), url("./bg.jpg"), url(bg.jpg)
-// 如下， import_list可能是[('', '', 'bg.jpg'), ('', '', 'logo.png')]
-// 元组中前两个空格表示匹配到的都是url(bg.jpg)这种形式的属性
 func (crawler *Crawler) parseCSSFile(content []byte, req *RequestTask) (newContent []byte, err error) {
 	fileStr := string(content)
 	// FindAllStringSubmatch返回值为切片, 是所有匹配到的字符串集合.
