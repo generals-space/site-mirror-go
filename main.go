@@ -13,11 +13,16 @@ var logger = util.NewLogger(os.Stdout)
 
 func main() {
 	config := &crawler.Config{
-		PageQueueSize:  10,
-		AssetQueueSize: 10,
-		SiteDBPath:     "site.db",
-		StartPage:      "http://www.abx.la/",
+		PageQueueSize:    5000,
+		AssetQueueSize:   50,
+		PageWorkerCount:  1,
+		AssetWorkerCount: 1,
+		SiteDBPath:       "site.db",
+		SitePath:         "sites",
+		StartPage:        "https://www.lewenxiaoshuo.com/",
+		MaxDepth:         2,
 	}
+
 	c, err := crawler.NewCrawler(config)
 	if err != nil {
 		panic(err)
