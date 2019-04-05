@@ -20,7 +20,7 @@ func main() {
 		SiteDBPath:       "site.db",
 		SitePath:         "sites",
 		StartPage:        "https://www.lewenxiaoshuo.com/",
-		MaxDepth:         2,
+		MaxDepth:         1,
 	}
 
 	c, err := crawler.NewCrawler(config)

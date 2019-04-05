@@ -3,6 +3,7 @@ package crawler
 import (
 	"bytes"
 	"net/http"
+	"net/url"
 	"os"
 	"path"
 
@@ -56,6 +57,16 @@ func getURL(url, refer string) (resp *http.Response, err error) {
 	return
 }
 
+func joinURL(baseURL, subURL string) (fullURL, fullURLWithoutFrag string) {
+	baseURLObj, _ := url.Parse(baseURL)
+	subURLObj, _ := url.Parse(subURL)
+	fullURLObj := baseURLObj.ResolveReference(subURLObj)
+	fullURL = fullURLObj.String()
+	fullURLObj.Fragment = ""
+	fullURLWithoutFrag = fullURLObj.String()
+	return
+}
+
 // getPageCharset 解析页面, 从中获取页面编码信息
 func getPageCharset(body []byte) (charset string, err error) {
 	bodyReader := bytes.NewReader(body)
@@ -73,12 +84,14 @@ func getPageCharset(body []byte) (charset string, err error) {
 	}
 	metaInfo, exist = dom.Find("meta[http-equiv]").Attr("content")
 	if exist {
-		// FindStringSubmatch返回值为切片, 第一个成员为模式匹配到的子串,
-		// 之后的成员分别是各分组匹配到的子串.
-		matchArray := charsetPattern.FindStringSubmatch(metaInfo)
-		if len(matchArray) > 0 {
-			charset = matchArray[1]
-			return
+		// FindStringSubmatch返回值为切片, 第一个成员为模式匹配到的子串, 之后的成员分别是各分组匹配到的子串.
+		// ta基本等效于FindStringSubmatch(metaInfo, 1), 只查询1个匹配项.
+		matchedArray := charsetPattern.FindStringSubmatch(metaInfo)
+		for _, matchedItem := range matchedArray[1:] {
+			if matchedItem != "" {
+				charset = matchedItem
+				return
+			}
 		}
 	}
 	charset = "utf-8"

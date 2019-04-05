@@ -26,3 +26,9 @@ var charsetPatternInDOMStr = `charset\s*=\s*(\S*)\s*;?`
 // charsetPattern 普通的MatchString可直接接受模式字符串, 无需Compile,
 // 但是只能作为判断是否匹配, 无法从中获取其他信息.
 var charsetPattern = regexp.MustCompile(charsetPatternInDOMStr)
+
+var cssAssetURLPatternStr = `url\(\'(.*?)\'\)|url\(\"(.*?)\"\)|url\((.*?)\)`
+var cssAssetURLPattern = regexp.MustCompile(cssAssetURLPatternStr)
+
+var emptyLinkPatternStr = `(^data:)|(about:blank)|(javascript:)`
+var emptyLinkPattern = regexp.MustCompile(emptyLinkPatternStr)

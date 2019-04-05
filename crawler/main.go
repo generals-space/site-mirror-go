@@ -61,21 +61,30 @@ func (crawler *Crawler) Start() {
 		}
 		go crawler.GetHTMLPage(x)
 	}
+
+	var y int
+	for {
+		y++
+		if y > crawler.Config.PageWorkerCount {
+			break
+		}
+		go crawler.GetStaticAsset(y)
+	}
 }
 
 // GetHTMLPage 工作协程, 从队列中获取任务, 请求html页面并解析
 func (crawler *Crawler) GetHTMLPage(num int) {
 	for req := range crawler.PageQueue {
-		logger.Infof("============= 取得页面任务: %+v", req)
+		logger.Infof("取得页面任务: %+v", req)
 		if 0 < crawler.Config.MaxDepth && crawler.Config.MaxDepth < req.Depth {
 			logger.Infof("当前页面已达到最大深度, 不再抓取新页面: url: %s, refer: %s, depth: %d", req.URL, req.Refer, req.Depth)
 		}
 		resp, err := getURL(req.URL, req.Refer)
-
 		if err != nil {
 			logger.Errorf("请求页面失败: url: %s, refer: %s, error: %s, 重新入队列", req.URL, req.Refer, err.Error())
 			continue
 		}
+		defer resp.Body.Close()
 		bodyContent, err := ioutil.ReadAll(resp.Body)
 		charsetName, err := getPageCharset(bodyContent)
 		if err != nil {
@@ -95,7 +104,7 @@ func (crawler *Crawler) GetHTMLPage(num int) {
 		htmlDom, err := goquery.NewDocumentFromReader(utf8Reader)
 		if err != nil {
 			logger.Errorf("生成dom树失败: %s", err.Error())
-			return
+			continue
 		}
 
 		if 0 < crawler.Config.MaxDepth && crawler.Config.MaxDepth < req.Depth+1 {
@@ -104,25 +113,26 @@ func (crawler *Crawler) GetHTMLPage(num int) {
 			crawler.ParseLinkingPages(htmlDom, req)
 		}
 		crawler.ParseLinkingAssets(htmlDom, req)
-		fileDir, fileName, err := crawler.TransToLocalPath(req.URL, PageURL)
-		if err != nil {
-			return
-		}
+
 		htmlString, err := htmlDom.Html()
 		if err != nil {
 			logger.Errorf("生成dom树失败: %s", err.Error())
-			return
+			continue
 		}
 		htmlString = ReplaceHTMLCharacterEntities(htmlString, charset)
 		fileContent, err := EncodeFromUTF8([]byte(htmlString), charset)
 		if err != nil {
 			logger.Errorf("编码失败: %s", err.Error())
-			return
+			continue
+		}
+		fileDir, fileName, err := crawler.TransToLocalPath(req.URL, PageURL)
+		if err != nil {
+			continue
 		}
 		err = WriteToLocalFile(crawler.Config.SitePath, fileDir, fileName, fileContent)
 		if err != nil {
 			logger.Errorf("写入文件失败: %s", err.Error())
-			return
+			continue
 		}
 	}
 }
@@ -131,6 +141,35 @@ func (crawler *Crawler) GetHTMLPage(num int) {
 func (crawler *Crawler) GetStaticAsset(num int) {
 	for req := range crawler.AssetQueue {
 		logger.Infof("取得静态文件任务: %+v", req)
+		if 0 < crawler.Config.MaxDepth && crawler.Config.MaxDepth < req.Depth {
+			logger.Infof("当前页面已达到最大深度, 不再抓取新页面: url: %s, refer: %s, depth: %d", req.URL, req.Refer, req.Depth)
+		}
+		resp, err := getURL(req.URL, req.Refer)
+		if err != nil {
+			logger.Errorf("请求页面失败: url: %s, refer: %s, error: %s, 重新入队列", req.URL, req.Refer, err.Error())
+			continue
+		}
+		defer resp.Body.Close()
+		bodyContent, err := ioutil.ReadAll(resp.Body)
+		// 如果是css文件, 解析其中的链接, 否则直接存储.
+		field, exist := resp.Header["Content-Type"]
+		if exist && field[0] == "text/css" {
+			bodyContent, err = crawler.parseCSSFile(bodyContent, req)
+			if err != nil {
+				logger.Errorf("解析css文件失败: %s", err.Error())
+				continue
+			}
+		}
+		fileDir, fileName, err := crawler.TransToLocalPath(req.URL, AssetURL)
+		if err != nil {
+			continue
+		}
+		fileContent := bodyContent
+		err = WriteToLocalFile(crawler.Config.SitePath, fileDir, fileName, fileContent)
+		if err != nil {
+			logger.Errorf("写入文件失败: %s", err.Error())
+			continue
+		}
 	}
 }
 
@@ -138,4 +177,10 @@ func (crawler *Crawler) GetStaticAsset(num int) {
 // 入队列前查询数据库记录, 如已有记录则不再接受.
 func (crawler *Crawler) EnqueuePage(req *RequestTask) {
 	crawler.PageQueue <- req
+}
+
+// EnqueueAsset 页面任务入队列.
+// 入队列前查询数据库记录, 如已有记录则不再接受.
+func (crawler *Crawler) EnqueueAsset(req *RequestTask) {
+	crawler.AssetQueue <- req
 }

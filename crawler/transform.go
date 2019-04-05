@@ -21,6 +21,8 @@ func (crawler *Crawler) TransToLocalLink(fullURL string, urlType int) (localLink
 	localLink = originPath
 	if urlType == PageURL {
 		localLink = crawler.transToLocalLinkForPage(urlObj)
+	} else {
+		localLink = crawler.transToLocalLinkForAsset(urlObj)
 	}
 
 	// 如果该url就是当前站点域名下的，那么无需新建域名目录存放.
@@ -72,6 +74,34 @@ func (crawler *Crawler) transToLocalLinkForPage(urlObj *url.URL) (localLink stri
 	// 注意此时localLink可能是拼接过query的字符串.
 	if !htmlURLPattern.MatchString(localLink) {
 		localLink += ".html"
+	}
+
+	return
+}
+
+func (crawler *Crawler) transToLocalLinkForAsset(urlObj *url.URL) (localLink string) {
+	originPath := urlObj.Path
+	originQuery := urlObj.RawQuery
+
+	localLink = originPath
+
+	// 如果path为空
+	if localLink == "" {
+		localLink = "index"
+	}
+	// 如果path以/结尾
+	boolean := strings.HasSuffix(localLink, "/")
+	if boolean {
+		localLink += "index"
+	}
+
+	// 替换query参数中的特殊字符
+	if originQuery != "" {
+		queryStr := originQuery
+		for key, val := range SpecialCharsMap {
+			queryStr = strings.Replace(queryStr, key, val, -1)
+		}
+		localLink = localLink + SpecialCharsMap["?"] + queryStr
 	}
 
 	return
