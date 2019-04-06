@@ -95,9 +95,11 @@ func (crawler *Crawler) GetHTMLPage(num int) {
 		logger.Infof("取得页面任务: %+v", req)
 		err := model.DelPageTask(crawler.DBClient, req)
 		if err != nil {
-			logger.Infof("删除页面任务队列记录失败: req: %+v, error: %s", req, err.Error())
+			logger.Infof("从数据库删除页面任务队列记录失败: req: %+v, error: %s", req, err.Error())
 			continue
 		}
+		logger.Debugf("已从数据库移除页面队列任务对象: %+v", req)
+
 		if 0 < crawler.Config.MaxDepth && crawler.Config.MaxDepth < req.Depth {
 			logger.Infof("已达到最大深度, 不再抓取: req: %+v", req)
 			continue
@@ -190,9 +192,11 @@ func (crawler *Crawler) GetStaticAsset(num int) {
 		logger.Infof("取得静态资源任务: %+v", req)
 		err := model.DelAssetTask(crawler.DBClient, req)
 		if err != nil {
-			logger.Infof("删除页面任务队列记录失败: req: %+v, error: %s", req, err.Error())
+			logger.Infof("从数据库删除静态资源任务队列记录失败: req: %+v, error: %s", req, err.Error())
 			continue
 		}
+		logger.Debugf("已从数据库移除静态资源队列任务对象: %+v", req)
+
 		if req.FailedTimes > crawler.Config.MaxRetryTimes {
 			logger.Infof("当前页面失败次数过多, 不再尝试: req: %+v", req)
 			continue

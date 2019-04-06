@@ -2,7 +2,7 @@ package model
 
 import "github.com/jinzhu/gorm"
 
-// QueryPageTasks 查询页面任务队列记录
+// QueryPageTasks 查询页面任务队列记录, 同时删除所有记录(之后要加载到任务队列中).
 func QueryPageTasks(db *gorm.DB) (tasks []*PageTask, err error) {
 	tasks = []*PageTask{}
 	err = db.Find(&tasks).Error
@@ -11,10 +11,14 @@ func QueryPageTasks(db *gorm.DB) (tasks []*PageTask, err error) {
 			err = nil
 		}
 	}
+	err = db.Unscoped().Delete(&PageTask{}).Error
+	if err != nil {
+		logger.Errorf("清空页面任务队列记录失败: %s", err.Error())
+	}
 	return
 }
 
-// QueryAssetTasks 查询静态资源任务队列记录
+// QueryAssetTasks 查询静态资源任务队列记录, 同时删除所有记录(之后要加载到任务队列中).
 func QueryAssetTasks(db *gorm.DB) (tasks []*AssetTask, err error) {
 	tasks = []*AssetTask{}
 	err = db.Find(&tasks).Error
@@ -22,6 +26,10 @@ func QueryAssetTasks(db *gorm.DB) (tasks []*AssetTask, err error) {
 		if err.Error() == "record not found" {
 			err = nil
 		}
+	}
+	err = db.Unscoped().Delete(&AssetTask{}).Error
+	if err != nil {
+		logger.Errorf("清空静态资源任务队列记录失败: %s", err.Error())
 	}
 	return
 }
