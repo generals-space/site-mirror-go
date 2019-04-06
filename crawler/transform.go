@@ -26,7 +26,7 @@ func TransToLocalLink(mainSite string, fullURL string, urlType int) (localLink s
 	}
 
 	// 如果该url就是当前站点域名下的，那么无需新建域名目录存放.
-	// 如果是其他站点的(需要事先开启允许下载其他站点静态文件的配置),
+	// 如果是其他站点的(需要事先开启允许下载其他站点静态资源的配置),
 	// 则要将资源存放在以站点域名为名的目录下, 路径中仍然需要保留域名部分.
 	if originHost != mainSite {
 		host := originHost

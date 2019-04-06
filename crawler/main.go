@@ -7,51 +7,68 @@ import (
 	"os"
 	"strings"
 
-	"gitee.com/generals-space/site-mirror-go.git/util"
 	"github.com/PuerkitoBio/goquery"
+	"github.com/jinzhu/gorm"
+
+	"gitee.com/generals-space/site-mirror-go.git/model"
+	"gitee.com/generals-space/site-mirror-go.git/util"
 )
 
 var logger = util.NewLogger(os.Stdout)
 
 // Crawler ...
 type Crawler struct {
-	PageQueue  chan *RequestTask // 页面任务队列
-	AssetQueue chan *RequestTask // 静态资源任务队列
+	PageQueue  chan *model.URLTask // 页面任务队列
+	AssetQueue chan *model.URLTask // 静态资源任务队列
 
 	Config   *Config
 	MainSite string
+	DBClient *gorm.DB
 }
 
 // NewCrawler 创建Crawler对象
 func NewCrawler(config *Config) (crawler *Crawler, err error) {
-	pageQueue := make(chan *RequestTask, config.PageQueueSize)
-	assetQueue := make(chan *RequestTask, config.AssetQueueSize)
+	pageQueue := make(chan *model.URLTask, config.PageQueueSize)
+	assetQueue := make(chan *model.URLTask, config.AssetQueueSize)
 	urlObj, err := url.Parse(config.StartPage)
 	if err != nil {
 		logger.Errorf("解析起始地址失败: url: %s, %s", config.StartPage, err.Error())
 		return
 	}
 	mainSite := urlObj.Host // Host成员带端口.
+	dbClient, err := model.GetDB(config.SiteDBPath)
+	if err != nil {
+		logger.Errorf("初始化数据库失败: site db: %s, %s", config.SiteDBPath, err.Error())
+		return
+	}
+
 	crawler = &Crawler{
 		PageQueue:  pageQueue,
 		AssetQueue: assetQueue,
 
 		Config:   config,
 		MainSite: mainSite,
+		DBClient: dbClient,
+	}
+
+	err = crawler.LoadTaskQueue()
+	if err != nil {
+		logger.Errorf("加载任务队列失败: %s", err.Error())
+		return
 	}
 	return
 }
 
 // Start 启动n个工作协程
 func (crawler *Crawler) Start() {
-	req := &RequestTask{
+	req := &model.URLTask{
 		URL:         crawler.Config.StartPage,
 		URLType:     PageURL,
 		Refer:       "",
 		Depth:       1,
 		FailedTimes: 0,
 	}
-	crawler.PageQueue <- req
+	crawler.EnqueuePage(req)
 
 	var x int
 	for {
@@ -76,12 +93,17 @@ func (crawler *Crawler) Start() {
 func (crawler *Crawler) GetHTMLPage(num int) {
 	for req := range crawler.PageQueue {
 		logger.Infof("取得页面任务: %+v", req)
+		err := model.DelPageTask(crawler.DBClient, req)
+		if err != nil {
+			logger.Infof("删除页面任务队列记录失败: req: %+v, error: %s", req, err.Error())
+			continue
+		}
 		if 0 < crawler.Config.MaxDepth && crawler.Config.MaxDepth < req.Depth {
-			logger.Infof("当前页面已达到最大深度, 不再抓取: req: %+v", req)
+			logger.Infof("已达到最大深度, 不再抓取: req: %+v", req)
 			continue
 		}
 		if req.FailedTimes > crawler.Config.MaxRetryTimes {
-			logger.Infof("当前页面失败次数过多, 不再尝试: req: %+v", req)
+			logger.Infof("失败次数过多, 不再尝试: req: %+v", req)
 			continue
 		}
 
@@ -93,6 +115,10 @@ func (crawler *Crawler) GetHTMLPage(num int) {
 			continue
 		} else if resp.StatusCode == 404 {
 			// 抓取失败一般是5xx或403, 405等, 出现404基本上就没有重试的意义了, 可以直接放弃
+			err = model.UpdateURLRecordStatus(crawler.DBClient, req.URL, model.URLTaskStatusFailed)
+			if err != nil {
+				logger.Errorf("更新任务记录状态失败: req: %+v, error: %s", req, err.Error())
+			}
 			continue
 		}
 		defer resp.Body.Close()
@@ -150,13 +176,23 @@ func (crawler *Crawler) GetHTMLPage(num int) {
 			logger.Errorf("写入文件失败: req: %+v, error: %s", req, err.Error())
 			continue
 		}
+		err = model.UpdateURLRecordStatus(crawler.DBClient, req.URL, model.URLTaskStatusSuccess)
+		if err != nil {
+			logger.Errorf("更新任务记录状态失败: req: %+v, error: %s", req, err.Error())
+			continue
+		}
 	}
 }
 
 // GetStaticAsset 工作协程, 从队列中获取任务, 获取静态资源并存储
 func (crawler *Crawler) GetStaticAsset(num int) {
 	for req := range crawler.AssetQueue {
-		logger.Infof("取得静态文件任务: %+v", req)
+		logger.Infof("取得静态资源任务: %+v", req)
+		err := model.DelAssetTask(crawler.DBClient, req)
+		if err != nil {
+			logger.Infof("删除页面任务队列记录失败: req: %+v, error: %s", req, err.Error())
+			continue
+		}
 		if req.FailedTimes > crawler.Config.MaxRetryTimes {
 			logger.Infof("当前页面失败次数过多, 不再尝试: req: %+v", req)
 			continue
@@ -170,6 +206,10 @@ func (crawler *Crawler) GetStaticAsset(num int) {
 			continue
 		} else if resp.StatusCode == 404 {
 			// 抓取失败一般是5xx或403, 405等, 出现404基本上就没有重试的意义了, 可以直接放弃
+			err = model.UpdateURLRecordStatus(crawler.DBClient, req.URL, model.URLTaskStatusFailed)
+			if err != nil {
+				logger.Errorf("更新任务记录状态失败: req: %+v, error: %s", req, err.Error())
+			}
 			continue
 		}
 		defer resp.Body.Close()
@@ -195,17 +235,10 @@ func (crawler *Crawler) GetStaticAsset(num int) {
 			logger.Errorf("写入文件失败: req: %+v, error: %s", req, err.Error())
 			continue
 		}
+		err = model.UpdateURLRecordStatus(crawler.DBClient, req.URL, model.URLTaskStatusSuccess)
+		if err != nil {
+			logger.Errorf("更新任务记录状态失败: req: %+v, error: %s", req, err.Error())
+			continue
+		}
 	}
-}
-
-// EnqueuePage 页面任务入队列.
-// 入队列前查询数据库记录, 如已有记录则不再接受.
-func (crawler *Crawler) EnqueuePage(req *RequestTask) {
-	crawler.PageQueue <- req
-}
-
-// EnqueueAsset 页面任务入队列.
-// 入队列前查询数据库记录, 如已有记录则不再接受.
-func (crawler *Crawler) EnqueueAsset(req *RequestTask) {
-	crawler.AssetQueue <- req
 }
