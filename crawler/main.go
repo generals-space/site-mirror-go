@@ -6,6 +6,7 @@ import (
 	"net/url"
 	"os"
 	"strings"
+	"sync"
 
 	"github.com/PuerkitoBio/goquery"
 	"github.com/jinzhu/gorm"
@@ -21,9 +22,10 @@ type Crawler struct {
 	PageQueue  chan *model.URLTask // 页面任务队列
 	AssetQueue chan *model.URLTask // 静态资源任务队列
 
-	Config   *Config
-	MainSite string
-	DBClient *gorm.DB
+	Config        *Config
+	MainSite      string
+	DBClient      *gorm.DB
+	DBClientMutex *sync.Mutex
 }
 
 // NewCrawler 创建Crawler对象
@@ -46,9 +48,10 @@ func NewCrawler(config *Config) (crawler *Crawler, err error) {
 		PageQueue:  pageQueue,
 		AssetQueue: assetQueue,
 
-		Config:   config,
-		MainSite: mainSite,
-		DBClient: dbClient,
+		Config:        config,
+		MainSite:      mainSite,
+		DBClient:      dbClient,
+		DBClientMutex: &sync.Mutex{},
 	}
 
 	err = crawler.LoadTaskQueue()
@@ -93,12 +96,13 @@ func (crawler *Crawler) Start() {
 func (crawler *Crawler) GetHTMLPage(num int) {
 	for req := range crawler.PageQueue {
 		logger.Infof("取得页面任务: %+v", req)
+		crawler.DBClientMutex.Lock()
 		err := model.DelPageTask(crawler.DBClient, req)
+		crawler.DBClientMutex.Unlock()
 		if err != nil {
 			logger.Infof("从数据库删除页面任务队列记录失败: req: %+v, error: %s", req, err.Error())
 			continue
 		}
-		logger.Debugf("已从数据库移除页面队列任务对象: %+v", req)
 
 		if 0 < crawler.Config.MaxDepth && crawler.Config.MaxDepth < req.Depth {
 			logger.Infof("已达到最大深度, 不再抓取: req: %+v", req)
@@ -117,7 +121,9 @@ func (crawler *Crawler) GetHTMLPage(num int) {
 			continue
 		} else if resp.StatusCode == 404 {
 			// 抓取失败一般是5xx或403, 405等, 出现404基本上就没有重试的意义了, 可以直接放弃
+			crawler.DBClientMutex.Lock()
 			err = model.UpdateURLRecordStatus(crawler.DBClient, req.URL, model.URLTaskStatusFailed)
+			crawler.DBClientMutex.Unlock()
 			if err != nil {
 				logger.Errorf("更新任务记录状态失败: req: %+v, error: %s", req, err.Error())
 			}
@@ -178,7 +184,9 @@ func (crawler *Crawler) GetHTMLPage(num int) {
 			logger.Errorf("写入文件失败: req: %+v, error: %s", req, err.Error())
 			continue
 		}
+		crawler.DBClientMutex.Lock()
 		err = model.UpdateURLRecordStatus(crawler.DBClient, req.URL, model.URLTaskStatusSuccess)
+		crawler.DBClientMutex.Unlock()
 		if err != nil {
 			logger.Errorf("更新任务记录状态失败: req: %+v, error: %s", req, err.Error())
 			continue
@@ -190,12 +198,13 @@ func (crawler *Crawler) GetHTMLPage(num int) {
 func (crawler *Crawler) GetStaticAsset(num int) {
 	for req := range crawler.AssetQueue {
 		logger.Infof("取得静态资源任务: %+v", req)
+		crawler.DBClientMutex.Lock()
 		err := model.DelAssetTask(crawler.DBClient, req)
+		crawler.DBClientMutex.Unlock()
 		if err != nil {
 			logger.Infof("从数据库删除静态资源任务队列记录失败: req: %+v, error: %s", req, err.Error())
 			continue
 		}
-		logger.Debugf("已从数据库移除静态资源队列任务对象: %+v", req)
 
 		if req.FailedTimes > crawler.Config.MaxRetryTimes {
 			logger.Infof("当前页面失败次数过多, 不再尝试: req: %+v", req)
@@ -210,7 +219,9 @@ func (crawler *Crawler) GetStaticAsset(num int) {
 			continue
 		} else if resp.StatusCode == 404 {
 			// 抓取失败一般是5xx或403, 405等, 出现404基本上就没有重试的意义了, 可以直接放弃
+			crawler.DBClientMutex.Lock()
 			err = model.UpdateURLRecordStatus(crawler.DBClient, req.URL, model.URLTaskStatusFailed)
+			crawler.DBClientMutex.Unlock()
 			if err != nil {
 				logger.Errorf("更新任务记录状态失败: req: %+v, error: %s", req, err.Error())
 			}
@@ -239,7 +250,9 @@ func (crawler *Crawler) GetStaticAsset(num int) {
 			logger.Errorf("写入文件失败: req: %+v, error: %s", req, err.Error())
 			continue
 		}
+		crawler.DBClientMutex.Lock()
 		err = model.UpdateURLRecordStatus(crawler.DBClient, req.URL, model.URLTaskStatusSuccess)
+		crawler.DBClientMutex.Unlock()
 		if err != nil {
 			logger.Errorf("更新任务记录状态失败: req: %+v, error: %s", req, err.Error())
 			continue

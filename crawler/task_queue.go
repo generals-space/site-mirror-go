@@ -6,20 +6,27 @@ import "gitee.com/generals-space/site-mirror-go.git/model"
 // 将其中缓存的任务加载到任务队列中
 func (crawler *Crawler) LoadTaskQueue() (err error) {
 	logger.Info("初始化任务队列")
+	crawler.DBClientMutex.Lock()
 	pageTasks, err := model.QueryPageTasks(crawler.DBClient)
+	crawler.DBClientMutex.Unlock()
 	if err != nil {
 		logger.Errorf("获取页面任务失败: %s", err.Error())
 		return
 	}
+
 	logger.Debugf("获取页面队列任务数量: %d", len(pageTasks))
 	for _, task := range pageTasks {
 		crawler.EnqueuePage(&task.URLTask)
 	}
+
+	crawler.DBClientMutex.Lock()
 	assetTasks, err := model.QueryAssetTasks(crawler.DBClient)
+	crawler.DBClientMutex.Unlock()
 	if err != nil {
 		logger.Errorf("获取页面任务失败: %s", err.Error())
 		return
 	}
+
 	logger.Debugf("获取静态资源队列任务数量: %d", len(pageTasks))
 	for _, task := range assetTasks {
 		crawler.EnqueuePage(&task.URLTask)
@@ -35,7 +42,9 @@ func (crawler *Crawler) SaveTaskQueue() (err error) {
 	if len(crawler.PageQueue) != 0 {
 		for req := range crawler.PageQueue {
 			pageTaskSum++
+			crawler.DBClientMutex.Lock()
 			err = model.AddPageTask(crawler.DBClient, req)
+			crawler.DBClientMutex.Unlock()
 			if err != nil {
 				logger.Errorf("存储页面任务失败: %s", err.Error())
 			}
@@ -47,7 +56,9 @@ func (crawler *Crawler) SaveTaskQueue() (err error) {
 	if len(crawler.PageQueue) != 0 {
 		for req := range crawler.AssetQueue {
 			assetTaskSum++
+			crawler.DBClientMutex.Lock()
 			err = model.AddAssetTask(crawler.DBClient, req)
+			crawler.DBClientMutex.Unlock()
 			if err != nil {
 				logger.Errorf("存储静态资源任务失败: %s", err.Error())
 			}
@@ -69,6 +80,8 @@ func (crawler *Crawler) SaveTaskQueue() (err error) {
 // 已进入队列的任务, 必定已经存在记录, 但不一定能成功下载.
 func (crawler *Crawler) EnqueuePage(req *model.URLTask) {
 	var err error
+	crawler.DBClientMutex.Lock()
+	defer crawler.DBClientMutex.Unlock()
 	exist := model.IsExistInURLRecord(crawler.DBClient, req.URL)
 	if exist {
 		return
@@ -100,6 +113,8 @@ func (crawler *Crawler) EnqueuePage(req *model.URLTask) {
 // 入队列前查询数据库记录, 如已有记录则不再接受.
 func (crawler *Crawler) EnqueueAsset(req *model.URLTask) {
 	var err error
+	crawler.DBClientMutex.Lock()
+	defer crawler.DBClientMutex.Unlock()
 	exist := model.IsExistInURLRecord(crawler.DBClient, req.URL)
 	if exist {
 		return

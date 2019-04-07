@@ -38,5 +38,6 @@ func DelAssetTask(db *gorm.DB, req *URLTask) (err error) {
 		logger.Errorf("删除静态资源任务队列记录失败: req: %+v, error: %s", req, err.Error())
 		return
 	}
+	logger.Debugf("已从数据库移除静态资源队列任务对象: %+v", req)
 	return
 }

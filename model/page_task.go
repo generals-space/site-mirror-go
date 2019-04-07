@@ -38,5 +38,6 @@ func DelPageTask(db *gorm.DB, req *URLTask) (err error) {
 		logger.Errorf("删除页面任务队列记录失败: req: %+v, error: %s", req, err.Error())
 		return
 	}
+	logger.Debugf("已从数据库移除页面队列任务对象: %+v", req)
 	return
 }
