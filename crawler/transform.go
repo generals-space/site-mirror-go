@@ -4,6 +4,8 @@ import (
 	"net/url"
 	"path"
 	"strings"
+
+	"gitee.com/generals-space/site-mirror-go.git/model"
 )
 
 // TransToLocalLink ...
@@ -19,7 +21,7 @@ func TransToLocalLink(mainSite string, fullURL string, urlType int) (localLink s
 	originPath := urlObj.Path
 
 	localLink = originPath
-	if urlType == PageURL {
+	if urlType == model.URLTypePage {
 		localLink = transToLocalLinkForPage(urlObj)
 	} else {
 		localLink = transToLocalLinkForAsset(urlObj)

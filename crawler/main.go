@@ -19,8 +19,8 @@ var logger = util.NewLogger(os.Stdout)
 
 // Crawler ...
 type Crawler struct {
-	PageQueue  chan *model.URLTask // 页面任务队列
-	AssetQueue chan *model.URLTask // 静态资源任务队列
+	PageQueue  chan *model.URLRecord // 页面任务队列
+	AssetQueue chan *model.URLRecord // 静态资源任务队列
 
 	Config        *Config
 	MainSite      string
@@ -30,8 +30,8 @@ type Crawler struct {
 
 // NewCrawler 创建Crawler对象
 func NewCrawler(config *Config) (crawler *Crawler, err error) {
-	pageQueue := make(chan *model.URLTask, config.PageQueueSize)
-	assetQueue := make(chan *model.URLTask, config.AssetQueueSize)
+	pageQueue := make(chan *model.URLRecord, config.PageQueueSize)
+	assetQueue := make(chan *model.URLRecord, config.AssetQueueSize)
 	urlObj, err := url.Parse(config.StartPage)
 	if err != nil {
 		logger.Errorf("解析起始地址失败: url: %s, %s", config.StartPage, err.Error())
@@ -64,9 +64,9 @@ func NewCrawler(config *Config) (crawler *Crawler, err error) {
 
 // Start 启动n个工作协程
 func (crawler *Crawler) Start() {
-	req := &model.URLTask{
+	req := &model.URLRecord{
 		URL:         crawler.Config.StartPage,
-		URLType:     PageURL,
+		URLType:     model.URLTypePage,
 		Refer:       "",
 		Depth:       1,
 		FailedTimes: 0,
@@ -94,13 +94,14 @@ func (crawler *Crawler) Start() {
 
 // GetHTMLPage 工作协程, 从队列中获取任务, 请求html页面并解析
 func (crawler *Crawler) GetHTMLPage(num int) {
+	var err error
 	for req := range crawler.PageQueue {
 		logger.Infof("取得页面任务: %+v", req)
 		crawler.DBClientMutex.Lock()
-		err := model.DelPageTask(crawler.DBClient, req)
+		err = model.UpdateURLRecordStatus(crawler.DBClient, req.URL, model.URLTaskStatusPending)
 		crawler.DBClientMutex.Unlock()
 		if err != nil {
-			logger.Infof("从数据库删除页面任务队列记录失败: req: %+v, error: %s", req, err.Error())
+			logger.Infof("更新页面任务队列记录失败: req: %+v, error: %s", req, err.Error())
 			continue
 		}
 
@@ -174,7 +175,7 @@ func (crawler *Crawler) GetHTMLPage(num int) {
 			logger.Errorf("页面编码失败: req: %+v, error: %s", req, err.Error())
 			continue
 		}
-		fileDir, fileName, err := TransToLocalPath(crawler.MainSite, req.URL, PageURL)
+		fileDir, fileName, err := TransToLocalPath(crawler.MainSite, req.URL, model.URLTypePage)
 		if err != nil {
 			logger.Errorf("转换为本地链接失败: req: %+v, error: %s", req, err.Error())
 			continue
@@ -196,13 +197,14 @@ func (crawler *Crawler) GetHTMLPage(num int) {
 
 // GetStaticAsset 工作协程, 从队列中获取任务, 获取静态资源并存储
 func (crawler *Crawler) GetStaticAsset(num int) {
+	var err error
 	for req := range crawler.AssetQueue {
 		logger.Infof("取得静态资源任务: %+v", req)
 		crawler.DBClientMutex.Lock()
-		err := model.DelAssetTask(crawler.DBClient, req)
+		err = model.UpdateURLRecordStatus(crawler.DBClient, req.URL, model.URLTaskStatusPending)
 		crawler.DBClientMutex.Unlock()
 		if err != nil {
-			logger.Infof("从数据库删除静态资源任务队列记录失败: req: %+v, error: %s", req, err.Error())
+			logger.Infof("更新静态资源任务队列记录失败: req: %+v, error: %s", req, err.Error())
 			continue
 		}
 
@@ -238,7 +240,7 @@ func (crawler *Crawler) GetStaticAsset(num int) {
 				continue
 			}
 		}
-		fileDir, fileName, err := TransToLocalPath(crawler.MainSite, req.URL, AssetURL)
+		fileDir, fileName, err := TransToLocalPath(crawler.MainSite, req.URL, model.URLTypeAsset)
 		if err != nil {
 			logger.Errorf("转换为本地链接失败: req: %+v, error: %s", req, err.Error())
 			continue

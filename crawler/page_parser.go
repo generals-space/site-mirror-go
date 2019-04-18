@@ -8,13 +8,13 @@ import (
 )
 
 // ParseLinkingPages 解析并改写页面中的页面链接, 包括a, iframe等元素
-func (crawler *Crawler) ParseLinkingPages(htmlDom *goquery.Document, req *model.URLTask) {
+func (crawler *Crawler) ParseLinkingPages(htmlDom *goquery.Document, req *model.URLRecord) {
 	aList := htmlDom.Find("a")
 	crawler.parseLinkingPages(aList, req, "href")
 }
 
 // parseLinkingPages 遍历选中节点, 解析链接入库, 同时修改节点的链接属性.
-func (crawler *Crawler) parseLinkingPages(nodeList *goquery.Selection, req *model.URLTask, attrName string) {
+func (crawler *Crawler) parseLinkingPages(nodeList *goquery.Selection, req *model.URLRecord, attrName string) {
 	// nodeList.Nodes 对象表示当前选择器中包含的元素
 	nodeList.Each(func(i int, nodeItem *goquery.Selection) {
 		subURL, exist := nodeItem.Attr(attrName)
@@ -24,19 +24,19 @@ func (crawler *Crawler) parseLinkingPages(nodeList *goquery.Selection, req *mode
 
 		fullURL, fullURLWithoutFrag := joinURL(req.URL, subURL)
 
-		if !URLFilter(fullURL, PageURL, crawler.MainSite) {
+		if !URLFilter(fullURL, model.URLTypePage, crawler.MainSite) {
 			return
 		}
-		localLink, err := TransToLocalLink(crawler.MainSite, fullURL, PageURL)
+		localLink, err := TransToLocalLink(crawler.MainSite, fullURL, model.URLTypePage)
 		if err != nil {
 			return
 		}
 		nodeItem.SetAttr(attrName, localLink)
 
 		// 新任务入队列
-		req := &model.URLTask{
+		req := &model.URLRecord{
 			URL:     fullURLWithoutFrag,
-			URLType: PageURL,
+			URLType: model.URLTypePage,
 			Refer:   req.URL,
 			Depth:   req.Depth + 1,
 		}
@@ -45,7 +45,7 @@ func (crawler *Crawler) parseLinkingPages(nodeList *goquery.Selection, req *mode
 }
 
 // ParseLinkingAssets 解析并改写页面中的静态资源链接, 包括js, css, img等元素
-func (crawler *Crawler) ParseLinkingAssets(htmlDom *goquery.Document, req *model.URLTask) {
+func (crawler *Crawler) ParseLinkingAssets(htmlDom *goquery.Document, req *model.URLRecord) {
 	linkList := htmlDom.Find("link")
 	crawler.parseLinkingAssets(linkList, req, "href")
 
@@ -56,7 +56,7 @@ func (crawler *Crawler) ParseLinkingAssets(htmlDom *goquery.Document, req *model
 	crawler.parseLinkingAssets(imgList, req, "src")
 }
 
-func (crawler *Crawler) parseLinkingAssets(nodeList *goquery.Selection, req *model.URLTask, attrName string) {
+func (crawler *Crawler) parseLinkingAssets(nodeList *goquery.Selection, req *model.URLRecord, attrName string) {
 	// nodeList.Nodes 对象表示当前选择器中包含的元素
 	nodeList.Each(func(i int, nodeItem *goquery.Selection) {
 		subURL, exist := nodeItem.Attr(attrName)
@@ -65,19 +65,19 @@ func (crawler *Crawler) parseLinkingAssets(nodeList *goquery.Selection, req *mod
 		}
 
 		fullURL, fullURLWithoutFrag := joinURL(req.URL, subURL)
-		if !URLFilter(fullURL, AssetURL, crawler.MainSite) {
+		if !URLFilter(fullURL, model.URLTypeAsset, crawler.MainSite) {
 			return
 		}
-		localLink, err := TransToLocalLink(crawler.MainSite, fullURL, AssetURL)
+		localLink, err := TransToLocalLink(crawler.MainSite, fullURL, model.URLTypeAsset)
 		if err != nil {
 			return
 		}
 		nodeItem.SetAttr(attrName, localLink)
 
 		// 新任务入队列
-		req := &model.URLTask{
+		req := &model.URLRecord{
 			URL:     fullURLWithoutFrag,
-			URLType: AssetURL,
+			URLType: model.URLTypeAsset,
 			Refer:   req.URL,
 			Depth:   req.Depth + 1,
 		}
@@ -88,7 +88,7 @@ func (crawler *Crawler) parseLinkingAssets(nodeList *goquery.Selection, req *mod
 // parseCSSFile 解析css文件中的链接, 获取资源并修改其引用路径.
 // css中可能包含url属性,或者是background-image属性的引用路径,
 // 格式可能为url('./bg.jpg'), url("./bg.jpg"), url(bg.jpg)
-func (crawler *Crawler) parseCSSFile(content []byte, req *model.URLTask) (newContent []byte, err error) {
+func (crawler *Crawler) parseCSSFile(content []byte, req *model.URLRecord) (newContent []byte, err error) {
 	fileStr := string(content)
 	// FindAllStringSubmatch返回值为切片, 是所有匹配到的字符串集合.
 	// 其成员也是切片, 此切片类似于FindStringSubmatch()的结果, 表示分组的匹配情况.
@@ -99,18 +99,18 @@ func (crawler *Crawler) parseCSSFile(content []byte, req *model.URLTask) (newCon
 				continue
 			}
 			fullURL, fullURLWithoutFrag := joinURL(req.URL, matchedURL)
-			if !URLFilter(fullURL, AssetURL, crawler.MainSite) {
+			if !URLFilter(fullURL, model.URLTypeAsset, crawler.MainSite) {
 				return
 			}
-			localLink, err := TransToLocalLink(crawler.MainSite, fullURL, AssetURL)
+			localLink, err := TransToLocalLink(crawler.MainSite, fullURL, model.URLTypeAsset)
 			if err != nil {
 				continue
 			}
 			fileStr = strings.Replace(fileStr, matchedURL, localLink, -1)
 			// 新任务入队列
-			req := &model.URLTask{
+			req := &model.URLRecord{
 				URL:     fullURLWithoutFrag,
-				URLType: AssetURL,
+				URLType: model.URLTypeAsset,
 				Refer:   req.URL,
 				Depth:   req.Depth + 1,
 			}
