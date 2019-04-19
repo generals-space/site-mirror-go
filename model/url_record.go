@@ -35,7 +35,7 @@ func QueryUnfinishedAssetTasks(db *gorm.DB) (tasks []*URLRecord, err error) {
 	return queryUnfinishedTasks(db, URLTypeAsset)
 }
 
-// AddOrUpdateURLRecord 添加URLRecord新记录(如果已存在则无操作)
+// AddOrUpdateURLRecord 任务入队列时添加URLRecord新记录(如果已存在则更新failed_times和status字段)
 func AddOrUpdateURLRecord(db *gorm.DB, task *URLRecord) (err error) {
 	exist := isExistInURLRecord(db, task.URL)
 	if exist {
@@ -44,6 +44,7 @@ func AddOrUpdateURLRecord(db *gorm.DB, task *URLRecord) (err error) {
 		}
 		dataToBeUpdated := map[string]interface{}{
 			"failed_times": task.FailedTimes,
+			"status":       URLTaskStatusInit, // 任务重新入队列要将状态修改为init状态
 		}
 		err = db.Model(&URLRecord{}).Where(whereArgs).Updates(dataToBeUpdated).Error
 	} else {
