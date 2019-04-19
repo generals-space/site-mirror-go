@@ -6,7 +6,10 @@ import (
 	"net/url"
 	"os"
 	"path"
+	"regexp"
+	"strings"
 
+	"gitee.com/generals-space/site-mirror-go.git/model"
 	"github.com/PuerkitoBio/goquery"
 )
 
@@ -66,8 +69,43 @@ func getPageCharset(body []byte) (charset string, err error) {
 }
 
 // URLFilter ...
-func URLFilter(fullURL string, urlType int, mainSite string) (boolean bool) {
-
+func URLFilter(fullURL string, urlType int, config *Config) (boolean bool) {
+	urlObj, err := url.Parse(fullURL)
+	if err != nil {
+		logger.Errorf("解析地址失败: url: %s, %s", fullURL, err.Error())
+		return
+	}
+	if urlType == model.URLTypePage && urlObj.Host != config.MainSite {
+		logger.Infof("不抓取站外页面: %s", fullURL)
+		return
+	}
+	if urlType == model.URLTypeAsset && urlObj.Host != config.MainSite && config.OutsiteAsset == false {
+		logger.Infof("不抓取站外资源: %s", fullURL)
+		return
+	}
+	if urlType == model.URLTypeAsset && strings.HasSuffix(fullURL, ".js") && config.NoJs == true {
+		logger.Infof("不抓取js资源: %s", fullURL)
+		return
+	}
+	if urlType == model.URLTypeAsset && strings.HasSuffix(fullURL, ".css") && config.NoCSS == true {
+		logger.Infof("不抓取css资源: %s", fullURL)
+		return
+	}
+	if urlType == model.URLTypeAsset && imagePattern.MatchString(fullURL) && config.NoImages == true {
+		logger.Infof("不抓取图片资源: %s", fullURL)
+		return
+	}
+	if urlType == model.URLTypeAsset && fontPattern.MatchString(fullURL) && config.NoFonts == true {
+		logger.Infof("不抓取字体资源: %s", fullURL)
+		return
+	}
+	for _, rule := range config.BlackList {
+		pattern := regexp.MustCompile(rule)
+		if pattern.MatchString(fullURL) {
+			logger.Infof("不抓取黑名单中的url: %s", fullURL)
+			return
+		}
+	}
 	return true
 }
 

@@ -19,6 +19,12 @@ var SpecialCharsMap = map[string]string{
 var htmlURLPatternStr = `(\.(html)|(htm)|(xhtml)|(xml))$`
 var htmlURLPattern = regexp.MustCompile(htmlURLPatternStr)
 
+var imagePatternStr = `\.((jpg)|(png)|(bmp)|(jpeg)|(gif)|(webp))$`
+var imagePattern = regexp.MustCompile(imagePatternStr)
+
+var fontPatternStr = `\.((ttf)|(woff)|(woff2)|(otf)|(eot))$`
+var fontPattern = regexp.MustCompile(fontPatternStr)
+
 // charsetPatternInDOMStr meta[http-equiv]元素, content属性中charset截取的正则模式.
 // 如<meta http-equiv="content-type" content="text/html; charset=utf-8">
 var charsetPatternInDOMStr = `charset\s*=\s*(\S*)\s*;?`

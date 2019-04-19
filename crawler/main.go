@@ -23,7 +23,6 @@ type Crawler struct {
 	AssetQueue chan *model.URLRecord // 静态资源任务队列
 
 	Config        *Config
-	MainSite      string
 	DBClient      *gorm.DB
 	DBClientMutex *sync.Mutex
 }
@@ -38,18 +37,18 @@ func NewCrawler(config *Config) (crawler *Crawler, err error) {
 		return
 	}
 	mainSite := urlObj.Host // Host成员带端口.
+	config.MainSite = mainSite
+
 	dbClient, err := model.GetDB(config.SiteDBPath)
 	if err != nil {
 		logger.Errorf("初始化数据库失败: site db: %s, %s", config.SiteDBPath, err.Error())
 		return
 	}
-
 	crawler = &Crawler{
 		PageQueue:  pageQueue,
 		AssetQueue: assetQueue,
 
 		Config:        config,
-		MainSite:      mainSite,
 		DBClient:      dbClient,
 		DBClientMutex: &sync.Mutex{},
 	}
@@ -169,7 +168,7 @@ func (crawler *Crawler) GetHTMLPage(num int) {
 			logger.Errorf("页面编码失败: req: %+v, error: %s", req, err.Error())
 			continue
 		}
-		fileDir, fileName, err := TransToLocalPath(crawler.MainSite, req.URL, model.URLTypePage)
+		fileDir, fileName, err := TransToLocalPath(crawler.Config.MainSite, req.URL, model.URLTypePage)
 		if err != nil {
 			logger.Errorf("转换为本地链接失败: req: %+v, error: %s", req, err.Error())
 			continue
@@ -239,7 +238,7 @@ func (crawler *Crawler) GetStaticAsset(num int) {
 				continue
 			}
 		}
-		fileDir, fileName, err := TransToLocalPath(crawler.MainSite, req.URL, model.URLTypeAsset)
+		fileDir, fileName, err := TransToLocalPath(crawler.Config.MainSite, req.URL, model.URLTypeAsset)
 		if err != nil {
 			logger.Errorf("转换为本地链接失败: req: %+v, error: %s", req, err.Error())
 			continue

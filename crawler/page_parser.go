@@ -23,10 +23,10 @@ func (crawler *Crawler) parseLinkingPages(nodeList *goquery.Selection, req *mode
 		}
 
 		fullURL, fullURLWithoutFrag := joinURL(req.URL, subURL)
-		if !URLFilter(fullURL, model.URLTypePage, crawler.MainSite) {
+		if !URLFilter(fullURL, model.URLTypePage, crawler.Config) {
 			return
 		}
-		localLink, err := TransToLocalLink(crawler.MainSite, fullURL, model.URLTypePage)
+		localLink, err := TransToLocalLink(crawler.Config.MainSite, fullURL, model.URLTypePage)
 		if err != nil {
 			return
 		}
@@ -64,10 +64,10 @@ func (crawler *Crawler) parseLinkingAssets(nodeList *goquery.Selection, req *mod
 		}
 
 		fullURL, fullURLWithoutFrag := joinURL(req.URL, subURL)
-		if !URLFilter(fullURL, model.URLTypeAsset, crawler.MainSite) {
+		if !URLFilter(fullURL, model.URLTypeAsset, crawler.Config) {
 			return
 		}
-		localLink, err := TransToLocalLink(crawler.MainSite, fullURL, model.URLTypeAsset)
+		localLink, err := TransToLocalLink(crawler.Config.MainSite, fullURL, model.URLTypeAsset)
 		if err != nil {
 			return
 		}
@@ -98,10 +98,10 @@ func (crawler *Crawler) parseCSSFile(content []byte, req *model.URLRecord) (newC
 				continue
 			}
 			fullURL, fullURLWithoutFrag := joinURL(req.URL, matchedURL)
-			if !URLFilter(fullURL, model.URLTypeAsset, crawler.MainSite) {
+			if !URLFilter(fullURL, model.URLTypeAsset, crawler.Config) {
 				return
 			}
-			localLink, err := TransToLocalLink(crawler.MainSite, fullURL, model.URLTypeAsset)
+			localLink, err := TransToLocalLink(crawler.Config.MainSite, fullURL, model.URLTypeAsset)
 			if err != nil {
 				continue
 			}

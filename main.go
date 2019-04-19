@@ -12,17 +12,10 @@ import (
 var logger = util.NewLogger(os.Stdout)
 
 func main() {
-	config := &crawler.Config{
-		PageQueueSize:    50,
-		AssetQueueSize:   50,
-		PageWorkerCount:  10,
-		AssetWorkerCount: 10,
-		SiteDBPath:       "site.db",
-		SitePath:         "sites",
-		StartPage:        "http://www.abx.la/",
-		MaxDepth:         1,
-		UserAgent:        "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/73.0.3683.86 Safari/537.36",
-	}
+	config := crawler.NewConfig()
+	config.StartPage = "https://www.lewenxiaoshuo.com/"
+	config.UserAgent = "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/73.0.3683.86 Safari/537.36"
+	config.MaxDepth = 1
 
 	c, err := crawler.NewCrawler(config)
 	if err != nil {
