@@ -18,12 +18,11 @@ func (crawler *Crawler) parseLinkingPages(nodeList *goquery.Selection, req *mode
 	// nodeList.Nodes 对象表示当前选择器中包含的元素
 	nodeList.Each(func(i int, nodeItem *goquery.Selection) {
 		subURL, exist := nodeItem.Attr(attrName)
-		if !exist {
+		if !exist || emptyLinkPattern.MatchString(subURL) {
 			return
 		}
 
 		fullURL, fullURLWithoutFrag := joinURL(req.URL, subURL)
-
 		if !URLFilter(fullURL, model.URLTypePage, crawler.MainSite) {
 			return
 		}
@@ -60,7 +59,7 @@ func (crawler *Crawler) parseLinkingAssets(nodeList *goquery.Selection, req *mod
 	// nodeList.Nodes 对象表示当前选择器中包含的元素
 	nodeList.Each(func(i int, nodeItem *goquery.Selection) {
 		subURL, exist := nodeItem.Attr(attrName)
-		if !exist {
+		if !exist || emptyLinkPattern.MatchString(subURL) {
 			return
 		}
 

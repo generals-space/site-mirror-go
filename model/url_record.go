@@ -2,6 +2,22 @@ package model
 
 import "github.com/jinzhu/gorm"
 
+// isExistInURLRecord 查询数据库中指定的url任务记录
+func isExistInURLRecord(db *gorm.DB, url string) (exist bool) {
+	var err error
+	urlRecord := &URLRecord{}
+	err = db.Where("url = ?", url).First(urlRecord).Error
+	if err != nil {
+		if err.Error() != "record not found" {
+			logger.Errorf("查询url记录出错: url: %s, error: %s", url, err.Error())
+		}
+		exist = false
+		return
+	}
+	exist = true
+	return
+}
+
 // queryUnfinishedTasks ...
 func queryUnfinishedTasks(db *gorm.DB, urlType int) (tasks []*URLRecord, err error) {
 	tasks = []*URLRecord{}
@@ -19,17 +35,20 @@ func QueryUnfinishedAssetTasks(db *gorm.DB) (tasks []*URLRecord, err error) {
 	return queryUnfinishedTasks(db, URLTypeAsset)
 }
 
-// AddURLRecord 添加URLRecord新记录(如果已存在则无操作)
-func AddURLRecord(db *gorm.DB, task *URLRecord) (err error) {
-	urlRecord := &URLRecord{}
-	err = db.Where("url = ?", task.URL).First(urlRecord).Error
-	if err != nil {
-		if err.Error() != "record not found" {
-			logger.Errorf("查询url记录出错: url: %s, error: %s", task.URL, err.Error())
-			return
+// AddOrUpdateURLRecord 添加URLRecord新记录(如果已存在则无操作)
+func AddOrUpdateURLRecord(db *gorm.DB, task *URLRecord) (err error) {
+	exist := isExistInURLRecord(db, task.URL)
+	if exist {
+		whereArgs := map[string]interface{}{
+			"url": task.URL,
 		}
+		dataToBeUpdated := map[string]interface{}{
+			"failed_times": task.FailedTimes,
+		}
+		err = db.Model(&URLRecord{}).Where(whereArgs).Updates(dataToBeUpdated).Error
+	} else {
+		err = db.Create(task).Error
 	}
-	err = db.Create(task).Error
 	return
 }
 

@@ -16,7 +16,8 @@ func (crawler *Crawler) LoadTaskQueue() (err error) {
 
 	logger.Debugf("获取页面队列任务数量: %d", len(pageTasks))
 	for _, task := range pageTasks {
-		crawler.EnqueuePage(task)
+		crawler.PageQueue <- task
+		// crawler.EnqueuePage(task)
 	}
 
 	crawler.DBClientMutex.Lock()
@@ -29,7 +30,8 @@ func (crawler *Crawler) LoadTaskQueue() (err error) {
 
 	logger.Debugf("获取静态资源队列任务数量: %d", len(pageTasks))
 	for _, task := range assetTasks {
-		crawler.EnqueuePage(task)
+		crawler.AssetQueue <- task
+		// crawler.EnqueuePage(task)
 	}
 	logger.Infof("初始化任务队列完成, 页面任务数量: %d, 静态资源任务数量: %d", len(crawler.PageQueue), len(crawler.AssetQueue))
 	return
@@ -46,9 +48,9 @@ func (crawler *Crawler) EnqueuePage(req *model.URLRecord) {
 	crawler.DBClientMutex.Lock()
 	defer crawler.DBClientMutex.Unlock()
 
-	err = model.AddURLRecord(crawler.DBClient, req)
+	err = model.AddOrUpdateURLRecord(crawler.DBClient, req)
 	if err != nil {
-		logger.Errorf("添加页面任务url记录失败, req: %+v, err: %s", req, err.Error())
+		logger.Errorf("添加(更新)页面任务url记录失败, req: %+v, err: %s", req, err.Error())
 		return
 	}
 	return
@@ -64,9 +66,9 @@ func (crawler *Crawler) EnqueueAsset(req *model.URLRecord) {
 	crawler.DBClientMutex.Lock()
 	defer crawler.DBClientMutex.Unlock()
 
-	err = model.AddURLRecord(crawler.DBClient, req)
+	err = model.AddOrUpdateURLRecord(crawler.DBClient, req)
 	if err != nil {
-		logger.Errorf("添加静态资源任务url记录失败, req: %+v, err: %s", req, err.Error())
+		logger.Errorf("添加(更新)静态资源任务url记录失败, req: %+v, err: %s", req, err.Error())
 		return
 	}
 	return

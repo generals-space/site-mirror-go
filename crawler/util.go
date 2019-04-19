@@ -30,5 +30,5 @@ var charsetPattern = regexp.MustCompile(charsetPatternInDOMStr)
 var cssAssetURLPatternStr = `url\(\'(.*?)\'\)|url\(\"(.*?)\"\)|url\((.*?)\)`
 var cssAssetURLPattern = regexp.MustCompile(cssAssetURLPatternStr)
 
-var emptyLinkPatternStr = `(^data:)|(about:blank)|(javascript:)`
+var emptyLinkPatternStr = `(^data:)|(^mailto:)|(about:blank)|(javascript:)`
 var emptyLinkPattern = regexp.MustCompile(emptyLinkPatternStr)

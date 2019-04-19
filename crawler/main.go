@@ -73,22 +73,11 @@ func (crawler *Crawler) Start() {
 	}
 	crawler.EnqueuePage(req)
 
-	var x int
-	for {
-		x++
-		if x > crawler.Config.PageWorkerCount {
-			break
-		}
-		go crawler.GetHTMLPage(x)
+	for i := 0; i < crawler.Config.PageWorkerCount; i++ {
+		go crawler.GetHTMLPage(i)
 	}
-
-	var y int
-	for {
-		y++
-		if y > crawler.Config.PageWorkerCount {
-			break
-		}
-		go crawler.GetStaticAsset(y)
+	for i := 0; i < crawler.Config.AssetWorkerCount; i++ {
+		go crawler.GetStaticAsset(i)
 	}
 }
 
@@ -106,7 +95,7 @@ func (crawler *Crawler) GetHTMLPage(num int) {
 		}
 
 		if 0 < crawler.Config.MaxDepth && crawler.Config.MaxDepth < req.Depth {
-			logger.Infof("已达到最大深度, 不再抓取: req: %+v", req)
+			logger.Infof("当前页面已达到最大深度, 不再抓取: req: %+v", req)
 			continue
 		}
 		if req.FailedTimes > crawler.Config.MaxRetryTimes {
@@ -131,6 +120,7 @@ func (crawler *Crawler) GetHTMLPage(num int) {
 			continue
 		}
 		defer resp.Body.Close()
+
 		// 编码处理
 		bodyContent, err := ioutil.ReadAll(resp.Body)
 		charsetName, err := getPageCharset(bodyContent)
@@ -157,12 +147,16 @@ func (crawler *Crawler) GetHTMLPage(num int) {
 			continue
 		}
 
+		logger.Debugf("准备进行页面解析: req: %+v", req)
+
 		if 0 < crawler.Config.MaxDepth && crawler.Config.MaxDepth < req.Depth+1 {
 			logger.Infof("当前页面已达到最大深度, 不再解析新页面: %+v", req)
 		} else {
 			crawler.ParseLinkingPages(htmlDom, req)
 		}
 		crawler.ParseLinkingAssets(htmlDom, req)
+
+		logger.Debugf("页面解析完成, 准备写入本地文件: req: %+v", req)
 
 		htmlString, err := htmlDom.Html()
 		if err != nil {
@@ -185,6 +179,9 @@ func (crawler *Crawler) GetHTMLPage(num int) {
 			logger.Errorf("写入文件失败: req: %+v, error: %s", req, err.Error())
 			continue
 		}
+
+		logger.Debugf("页面任务写入本地文件成功: req: %+v", req)
+
 		crawler.DBClientMutex.Lock()
 		err = model.UpdateURLRecordStatus(crawler.DBClient, req.URL, model.URLTaskStatusSuccess)
 		crawler.DBClientMutex.Unlock()
@@ -192,6 +189,7 @@ func (crawler *Crawler) GetHTMLPage(num int) {
 			logger.Errorf("更新任务记录状态失败: req: %+v, error: %s", req, err.Error())
 			continue
 		}
+		logger.Debugf("页面任务完成: req: %+v", req)
 	}
 }
 
@@ -231,6 +229,7 @@ func (crawler *Crawler) GetStaticAsset(num int) {
 		}
 		defer resp.Body.Close()
 		bodyContent, err := ioutil.ReadAll(resp.Body)
+
 		// 如果是css文件, 解析其中的链接, 否则直接存储.
 		field, exist := resp.Header["Content-Type"]
 		if exist && field[0] == "text/css" {
@@ -252,6 +251,8 @@ func (crawler *Crawler) GetStaticAsset(num int) {
 			logger.Errorf("写入文件失败: req: %+v, error: %s", req, err.Error())
 			continue
 		}
+		logger.Debugf("静态资源任务写入本地文件成功: req: %+v", req)
+
 		crawler.DBClientMutex.Lock()
 		err = model.UpdateURLRecordStatus(crawler.DBClient, req.URL, model.URLTaskStatusSuccess)
 		crawler.DBClientMutex.Unlock()
@@ -259,5 +260,6 @@ func (crawler *Crawler) GetStaticAsset(num int) {
 			logger.Errorf("更新任务记录状态失败: req: %+v, error: %s", req, err.Error())
 			continue
 		}
+		logger.Debugf("静态资源任务完成: req: %+v", req)
 	}
 }
