@@ -53,6 +53,12 @@ func (crawler *Crawler) ParseLinkingAssets(htmlDom *goquery.Document, req *model
 
 	imgList := htmlDom.Find("img")
 	crawler.parseLinkingAssets(imgList, req, "src")
+
+	videoList := htmlDom.Find("video")
+	crawler.parseLinkingAssets(videoList, req, "src")
+
+	audioList := htmlDom.Find("audio")
+	crawler.parseLinkingAssets(audioList, req, "src")
 }
 
 func (crawler *Crawler) parseLinkingAssets(nodeList *goquery.Selection, req *model.URLRecord, attrName string) {
