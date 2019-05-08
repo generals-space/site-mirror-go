@@ -1,15 +1,9 @@
 package model
 
 import (
-	"os"
-
 	"github.com/jinzhu/gorm"
 	_ "github.com/jinzhu/gorm/dialects/sqlite" // 注释防止绿色下划线语法提示
-
-	"gitee.com/generals-space/site-mirror-go.git/util"
 )
-
-var logger = util.NewLogger(os.Stdout)
 
 const (
 	// URLTaskStatusInit 任务状态初始值, 0

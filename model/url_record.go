@@ -8,9 +8,6 @@ func isExistInURLRecord(db *gorm.DB, url string) (exist bool) {
 	urlRecord := &URLRecord{}
 	err = db.Where("url = ?", url).First(urlRecord).Error
 	if err != nil {
-		if err.Error() != "record not found" {
-			logger.Errorf("查询url记录出错: url: %s, error: %s", url, err.Error())
-		}
 		exist = false
 		return
 	}
@@ -58,9 +55,6 @@ func UpdateURLRecordStatus(db *gorm.DB, url string, status int) (err error) {
 	urlRecord := &URLRecord{}
 	err = db.Where("url = ?", url).First(urlRecord).Error
 	if err != nil {
-		if err.Error() != "record not found" {
-			logger.Errorf("查询url记录出错: url: %s, error: %s", url, err.Error())
-		}
 		return
 	}
 

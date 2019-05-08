@@ -4,7 +4,6 @@ import (
 	"bytes"
 	"io/ioutil"
 	"net/url"
-	"os"
 	"strings"
 	"sync"
 
@@ -15,7 +14,7 @@ import (
 	"gitee.com/generals-space/site-mirror-go.git/util"
 )
 
-var logger = util.NewLogger(os.Stdout)
+var logger *util.Logger
 
 // Crawler ...
 type Crawler struct {
@@ -28,7 +27,8 @@ type Crawler struct {
 }
 
 // NewCrawler 创建Crawler对象
-func NewCrawler(config *Config) (crawler *Crawler, err error) {
+func NewCrawler(config *Config, _logger *util.Logger) (crawler *Crawler, err error) {
+	logger = _logger
 	pageQueue := make(chan *model.URLRecord, config.PageQueueSize)
 	assetQueue := make(chan *model.URLRecord, config.AssetQueueSize)
 	urlObj, err := url.Parse(config.StartPage)

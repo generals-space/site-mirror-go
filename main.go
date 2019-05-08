@@ -9,15 +9,16 @@ import (
 	"gitee.com/generals-space/site-mirror-go.git/util"
 )
 
-var logger = util.NewLogger(os.Stdout)
-
 func main() {
+	logger := util.NewLogger(os.Stdout)
+	// logger.SetLevel("debug")
+
 	config := crawler.NewConfig()
 	config.StartPage = "https://www.lewenxiaoshuo.com/"
 	config.UserAgent = "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/73.0.3683.86 Safari/537.36"
 	config.MaxDepth = 1
 
-	c, err := crawler.NewCrawler(config)
+	c, err := crawler.NewCrawler(config, logger)
 	if err != nil {
 		panic(err)
 	}
