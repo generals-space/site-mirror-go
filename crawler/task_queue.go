@@ -31,7 +31,7 @@ func (crawler *Crawler) LoadTaskQueue() (err error) {
 	logger.Debugf("获取静态资源队列任务数量: %d", len(pageTasks))
 	for _, task := range assetTasks {
 		crawler.AssetQueue <- task
-		// crawler.EnqueuePage(task)
+		// crawler.EnqueueAsset(task)
 	}
 	logger.Infof("初始化任务队列完成, 页面任务数量: %d, 静态资源任务数量: %d", len(crawler.PageQueue), len(crawler.AssetQueue))
 	return
@@ -40,9 +40,12 @@ func (crawler *Crawler) LoadTaskQueue() (err error) {
 // EnqueuePage 页面任务入队列.
 // 入队列前查询数据库记录, 如已有记录则不再接受.
 // 已进入队列的任务, 必定已经存在记录, 但不一定能成功下载.
+// 由于队列长度有限, 这里可能会阻塞, 最可能发生死锁
+// 每个page worker在解析页面时, 会将页面中的链接全部入队列.
+// 如果此时队列已满, page worker就会阻塞, 当所有worker都阻塞到这里时, 程序就无法继续执行.
 func (crawler *Crawler) EnqueuePage(req *model.URLRecord) {
 	var err error
-	// 由于队列长度有限, 这里可能会阻塞.
+
 	crawler.PageQueue <- req
 
 	crawler.DBClientMutex.Lock()

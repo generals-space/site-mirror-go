@@ -29,8 +29,8 @@ type Crawler struct {
 // NewCrawler 创建Crawler对象
 func NewCrawler(config *Config, _logger *util.Logger) (crawler *Crawler, err error) {
 	logger = _logger
-	pageQueue := make(chan *model.URLRecord, config.PageQueueSize)
-	assetQueue := make(chan *model.URLRecord, config.AssetQueueSize)
+	pageQueue := make(chan *model.URLRecord, config.PageWorkerCount*config.LinkRatioInSinglePage)
+	assetQueue := make(chan *model.URLRecord, config.AssetWorkerCount*config.LinkRatioInSinglePage)
 	urlObj, err := url.Parse(config.StartPage)
 	if err != nil {
 		logger.Errorf("解析起始地址失败: url: %s, %s", config.StartPage, err.Error())
