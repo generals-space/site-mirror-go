@@ -3,6 +3,7 @@ package crawler
 import (
 	"bytes"
 	"io/ioutil"
+	"net/http"
 	"net/url"
 	"strings"
 	"sync"
@@ -29,8 +30,8 @@ type Crawler struct {
 // NewCrawler 创建Crawler对象
 func NewCrawler(config *Config, _logger *util.Logger) (crawler *Crawler, err error) {
 	logger = _logger
-	pageQueue := make(chan *model.URLRecord, config.PageQueueSize)
-	assetQueue := make(chan *model.URLRecord, config.AssetQueueSize)
+	pageQueue := make(chan *model.URLRecord, config.PageWorkerCount*config.LinkRatioInSinglePage)
+	assetQueue := make(chan *model.URLRecord, config.AssetWorkerCount*config.LinkRatioInSinglePage)
 	urlObj, err := url.Parse(config.StartPage)
 	if err != nil {
 		logger.Errorf("解析起始地址失败: url: %s, %s", config.StartPage, err.Error())
@@ -80,49 +81,63 @@ func (crawler *Crawler) Start() {
 	}
 }
 
-// GetHTMLPage 工作协程, 从队列中获取任务, 请求html页面并解析
-func (crawler *Crawler) GetHTMLPage(num int) {
-	var err error
-	for req := range crawler.PageQueue {
-		logger.Infof("取得页面任务: %+v", req)
+// getAndRead 发起请求获取页面或静态资源, 返回响应体内容.
+func (crawler *Crawler) getAndRead(req *model.URLRecord) (body []byte, header http.Header, err error) {
+	crawler.DBClientMutex.Lock()
+	err = model.UpdateURLRecordStatus(crawler.DBClient, req.URL, model.URLTaskStatusPending)
+	crawler.DBClientMutex.Unlock()
+	if err != nil {
+		logger.Infof("更新任务队列记录失败: req: %+v, error: %s", req, err.Error())
+		return
+	}
+
+	if req.FailedTimes > crawler.Config.MaxRetryTimes {
+		logger.Infof("失败次数过多, 不再尝试: req: %+v", req)
+		return
+	}
+
+	if req.URLType == model.URLTypePage && 0 < crawler.Config.MaxDepth && crawler.Config.MaxDepth < req.Depth {
+		logger.Infof("当前页面已达到最大深度, 不再抓取: req: %+v", req)
+		return
+	}
+
+	resp, err := getURL(req.URL, req.Refer, crawler.Config.UserAgent)
+	if err != nil {
+		logger.Errorf("请求失败, 重新入队列: req: %+v, error: %s", req, err.Error())
+		req.FailedTimes++
+		if req.URLType == model.URLTypePage {
+			crawler.EnqueuePage(req)
+		} else {
+			crawler.EnqueueAsset(req)
+		}
+		return
+	} else if resp.StatusCode == 404 {
+		// 抓取失败一般是5xx或403, 405等, 出现404基本上就没有重试的意义了, 可以直接放弃
 		crawler.DBClientMutex.Lock()
-		err = model.UpdateURLRecordStatus(crawler.DBClient, req.URL, model.URLTaskStatusPending)
+		err = model.UpdateURLRecordStatus(crawler.DBClient, req.URL, model.URLTaskStatusFailed)
 		crawler.DBClientMutex.Unlock()
 		if err != nil {
-			logger.Infof("更新页面任务队列记录失败: req: %+v, error: %s", req, err.Error())
-			continue
+			logger.Errorf("更新任务记录状态失败: req: %+v, error: %s", req, err.Error())
 		}
+		return
+	}
+	defer resp.Body.Close()
 
-		if 0 < crawler.Config.MaxDepth && crawler.Config.MaxDepth < req.Depth {
-			logger.Infof("当前页面已达到最大深度, 不再抓取: req: %+v", req)
-			continue
-		}
-		if req.FailedTimes > crawler.Config.MaxRetryTimes {
-			logger.Infof("失败次数过多, 不再尝试: req: %+v", req)
-			continue
-		}
+	header = resp.Header
+	body, err = ioutil.ReadAll(resp.Body)
 
-		resp, err := getURL(req.URL, req.Refer, crawler.Config.UserAgent)
-		if err != nil {
-			logger.Errorf("请求页面失败, 重新入队列: req: %+v, error: %s", req, err.Error())
-			req.FailedTimes++
-			crawler.EnqueuePage(req)
-			continue
-		} else if resp.StatusCode == 404 {
-			// 抓取失败一般是5xx或403, 405等, 出现404基本上就没有重试的意义了, 可以直接放弃
-			crawler.DBClientMutex.Lock()
-			err = model.UpdateURLRecordStatus(crawler.DBClient, req.URL, model.URLTaskStatusFailed)
-			crawler.DBClientMutex.Unlock()
-			if err != nil {
-				logger.Errorf("更新任务记录状态失败: req: %+v, error: %s", req, err.Error())
-			}
-			continue
-		}
-		defer resp.Body.Close()
+	return
+}
+
+// GetHTMLPage 工作协程, 从队列中获取任务, 请求html页面并解析
+func (crawler *Crawler) GetHTMLPage(num int) {
+	for req := range crawler.PageQueue {
+		logger.Infof("取得页面任务: %+v", req)
+
+		respBody, _, err := crawler.getAndRead(req)
 
 		// 编码处理
-		bodyContent, err := ioutil.ReadAll(resp.Body)
-		charsetName, err := getPageCharset(bodyContent)
+		charsetName, err := getPageCharset(respBody)
 		if err != nil {
 			logger.Errorf("获取页面编码失败: req: %+v, error: %s", req, err.Error())
 			continue
@@ -134,7 +149,7 @@ func (crawler *Crawler) GetHTMLPage(num int) {
 			logger.Debugf("未找到匹配的编码: req: %+v, error: %s", req, err.Error())
 			continue
 		}
-		utf8Coutent, err := DecodeToUTF8(bodyContent, charset)
+		utf8Coutent, err := DecodeToUTF8(respBody, charset)
 		if err != nil {
 			logger.Errorf("页面解码失败: req: %+v, error: %s", req, err.Error())
 			continue
@@ -194,45 +209,15 @@ func (crawler *Crawler) GetHTMLPage(num int) {
 
 // GetStaticAsset 工作协程, 从队列中获取任务, 获取静态资源并存储
 func (crawler *Crawler) GetStaticAsset(num int) {
-	var err error
 	for req := range crawler.AssetQueue {
 		logger.Infof("取得静态资源任务: %+v", req)
-		crawler.DBClientMutex.Lock()
-		err = model.UpdateURLRecordStatus(crawler.DBClient, req.URL, model.URLTaskStatusPending)
-		crawler.DBClientMutex.Unlock()
-		if err != nil {
-			logger.Infof("更新静态资源任务队列记录失败: req: %+v, error: %s", req, err.Error())
-			continue
-		}
 
-		if req.FailedTimes > crawler.Config.MaxRetryTimes {
-			logger.Infof("当前页面失败次数过多, 不再尝试: req: %+v", req)
-			continue
-		}
-
-		resp, err := getURL(req.URL, req.Refer, crawler.Config.UserAgent)
-		if err != nil {
-			logger.Errorf("请求静态资源失败, 重新入队列: req: %+v, error: %s", req, err.Error())
-			req.FailedTimes++
-			crawler.EnqueueAsset(req)
-			continue
-		} else if resp.StatusCode == 404 {
-			// 抓取失败一般是5xx或403, 405等, 出现404基本上就没有重试的意义了, 可以直接放弃
-			crawler.DBClientMutex.Lock()
-			err = model.UpdateURLRecordStatus(crawler.DBClient, req.URL, model.URLTaskStatusFailed)
-			crawler.DBClientMutex.Unlock()
-			if err != nil {
-				logger.Errorf("更新任务记录状态失败: req: %+v, error: %s", req, err.Error())
-			}
-			continue
-		}
-		defer resp.Body.Close()
-		bodyContent, err := ioutil.ReadAll(resp.Body)
+		respBody, respHeader, err := crawler.getAndRead(req)
 
 		// 如果是css文件, 解析其中的链接, 否则直接存储.
-		field, exist := resp.Header["Content-Type"]
+		field, exist := respHeader["Content-Type"]
 		if exist && field[0] == "text/css" {
-			bodyContent, err = crawler.parseCSSFile(bodyContent, req)
+			respBody, err = crawler.parseCSSFile(respBody, req)
 			if err != nil {
 				logger.Errorf("解析css文件失败: req: %+v, error: %s", req, err.Error())
 				continue
@@ -244,8 +229,7 @@ func (crawler *Crawler) GetStaticAsset(num int) {
 			continue
 		}
 
-		fileContent := bodyContent
-		err = WriteToLocalFile(crawler.Config.SitePath, fileDir, fileName, fileContent)
+		err = WriteToLocalFile(crawler.Config.SitePath, fileDir, fileName, respBody)
 		if err != nil {
 			logger.Errorf("写入文件失败: req: %+v, error: %s", req, err.Error())
 			continue

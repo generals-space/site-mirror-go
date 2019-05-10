@@ -2,17 +2,15 @@ package model
 
 import "github.com/jinzhu/gorm"
 
-// isExistInURLRecord 查询数据库中指定的url任务记录
-func isExistInURLRecord(db *gorm.DB, url string) (exist bool) {
+// isExistInURLRecord 查询数据库中指定的url任务记录, 判断是否已存在
+func isExistInURLRecord(db *gorm.DB, url string) bool {
 	var err error
-	urlRecord := &URLRecord{}
-	err = db.Where("url = ?", url).First(urlRecord).Error
-	if err != nil {
-		exist = false
-		return
+	var count int
+	err = db.Table("url_records").Where("url = ?", url).Count(&count).Error
+	if err != nil || count == 0 {
+		return false
 	}
-	exist = true
-	return
+	return true
 }
 
 // queryUnfinishedTasks ...
