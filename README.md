@@ -22,3 +22,9 @@
 实现逻辑相同.
 
 golang版本: 1.11.1+
+
+------
+
+效果截图
+
+![](./doc/src/screenshot.jpg)
